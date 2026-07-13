@@ -235,22 +235,6 @@ Linux 파일시스템 레벨에서 불변 플래그를 설정한다. root도 이
 
 잠금 시점의 `sha256sum(openclaw.json)`을 기록한다. 이후 검증 시 권한·소유자·immutable bit 외에 콘텐츠 해시까지 비교하므로, root가 변조 후 권한을 원복해도 해시 불일치로 감지된다.
 
-**잠금 재확인 사이클 (`relock-reconfirm.ts`)**
-
-3단계 잠금 이후 "lock → settle → re-confirm → re-lock if drifted" 사이클을 실행한다. in-sandbox reconciler(OpenClaw gateway의 권한 정규화 프로세스)가 잠금 직후 권한을 되돌릴 수 있는 TOCTOU 레이스 윈도우를 좁히기 위해서다. 최종 re-confirm이 통과해야만 shields UP 상태로 선언된다.
-
-**Shields 감사 로그 (`shields/audit.ts`)**
-
-shields up/down/auto-restore/failed 이벤트와 config 변경(inference-set, config-set)을 `~/.nemoclaw/state/shields-audit.jsonl`에 append-only JSONL로 기록한다. 크리덴셜 값은 절대 포함하지 않으며 key 이름과 정책 레이블만 기록해 포렌식과 감사 추적에 활용한다.
-
-**잠금 대상 디렉토리 fan-out (`state-dir-lock.ts`)**
-
-shields up은 `/sandbox/.openclaw`만 잠그는 것이 아니다. `state-dir-lock.ts`가 고위험 state 디렉토리 전체 목록을 관리하며, shields up/down 시 일괄 fan-out으로 적용한다. `agents/*/sessions` 같은 런타임 서브패스는 별도 carve-out으로 예외 처리해 에이전트 세션 상태는 유지된다.
-
-**권한 충돌 자동 감지/복구 (`mutable-config-perms.ts`)**
-
-OpenClaw의 `doctor --fix` 명령은 상태 디렉토리를 `700/600`으로 조인다. 그런데 NemoClaw는 게이트웨이 프로세스가 `sandbox` 그룹을 공유하므로 `/sandbox/.openclaw`가 `2770/660` (setgid + 그룹 쓰기)이어야 한다. `doctor --fix`가 실행되면 제어 UI가 EACCES 오류를 낸다. NemoClaw는 이 권한 계약 위반을 자동으로 감지하고 복구한다.
-
 ### 4.4 심볼릭 링크 및 TOCTOU 공격 방지 `[격리]`
 
 Dockerfile 패치 및 설정 파일 쓰기 시 `O_NOFOLLOW` 플래그와 atomic rename 패턴을 사용한다.
