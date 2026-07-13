@@ -206,14 +206,50 @@ allow/deny 경로를 설정하면 `openat`, `unlinkat` 등 파일 syscall을 필
 
 #### 플랫폼: Windows 네이티브 지원 (alpha) — 유일한 차별점
 
-비교 대상 중 **유일한 네이티브 Windows 샌드박스**다. WSL2 없이 동작. nono는 Windows 지원이 없다.
+비교 대상 중 **유일한 네이티브 Windows 샌드박스**다. WSL2 없이 동작. nono는 Windows 지원 자체가 없다.
 
-- `srt-win.exe` (Rust 바이너리) — `srt-sandbox` 로컬 유저 계정 + **WFP (Windows Filtering Platform)** 커널 레벨 네트워크 필터
-- WFP 필터가 유저 **SID 기반**이라 AI가 자식 프로세스로 네트워크 우회를 시도해도 차단 (surrogate-spawn 방어)
-- 프로세스 구조: `broker → CreateProcessWithLogonW → restricted-token child`
-- 파일시스템: ACE(Access Control Entry) 방식으로 허용 경로 지정
+**동작 구조:**
+
+```
+최초 1회: srt-win.exe (UAC) → "srt-sandbox" 로컬 유저 계정 생성
+                             → WFP 네트워크 필터 커널에 설치
+
+AI 실행 시: broker
+  → CreateProcessWithLogonW("srt-sandbox") → runner
+    → restricted-token으로 AI 자식 프로세스 실행
+```
+
+- **WFP (Windows Filtering Platform)**: Windows 커널 내장 네트워크 필터링 엔진. Windows Defender·상용 방화벽도 이 레이어를 사용. 앱 레벨에서 우회 불가.
+- **SID (Security Identifier)**: Windows가 모든 유저에게 부여하는 고유 신원 번호(`S-1-5-21-...`). 이름이 아닌 SID 기준으로 필터가 걸리므로, AI가 자식 프로세스를 만들어도 SID를 상속해 동일한 WFP 규칙에 적용됨 (surrogate-spawn 방어).
+- **파일시스템**: ACE(Access Control Entry)로 `srt-sandbox` SID에게 허용 경로만 지정.
 
 이 부분은 **에이전트 보안이 아닌 격리 기술**이지만, Windows 엔터프라이즈 환경에서는 유일한 선택지다.
+
+#### nono Linux vs srt Windows — 격리 수준 비교
+
+같은 "OS 프리미티브 샌드박스"지만 깊이가 다르다.
+
+| 항목 | nono (Linux) | srt (Windows) |
+|------|:------------:|:-------------:|
+| 네트워크 차단 | 프록시 기반 | WFP 커널 필터 |
+| 파일시스템 차단 | Landlock (커널 LSM) | ACE (파일 권한) |
+| **syscall 감시** | **seccomp-notify — 모든 syscall 실시간 중재** | **없음** |
+| 프로세스 권한 제거 | capabilities 드롭 | restricted token |
+| 우회 난이도 | 매우 높음 | 높음 |
+
+**핵심 차이 — seccomp-notify:**
+
+nono는 AI가 커널에 보내는 **모든 syscall을 실시간으로 가로채** 허용/차단을 결정한다. 파일 열기(`openat`), 소켓 연결(`connect`), 프로세스 생성(`execve`) — 모든 OS 호출이 nono supervisor를 거친다.
+
+srt Windows는 WFP(네트워크)와 ACE(파일시스템)로 **결과를 차단**하지만, AI가 어떤 syscall을 시도하는지 실시간으로 감시하는 레이어가 없다.
+
+```
+비유:
+  nono Linux  = 공항 보안 검색대 — 모든 승객 개별 검색 후 통과
+  srt Windows = 게이트 탑승권 확인 — 허가된 목적지만 탑승 가능
+```
+
+**결론:** 격리 깊이는 nono Linux > srt Windows. 그러나 **Windows 환경에서는 srt가 유일한 선택지**다 — nono는 Windows를 지원하지 않는다.
 
 #### srt의 현재 에이전트 보안 한계
 
