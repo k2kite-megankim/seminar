@@ -243,12 +243,6 @@ nono는 AI가 커널에 보내는 **모든 syscall을 실시간으로 가로채*
 
 srt Windows는 WFP(네트워크)와 ACE(파일시스템)로 **결과를 차단**하지만, AI가 어떤 syscall을 시도하는지 실시간으로 감시하는 레이어가 없다.
 
-```
-비유:
-  nono Linux  = 공항 보안 검색대 — 모든 승객 개별 검색 후 통과
-  srt Windows = 게이트 탑승권 확인 — 허가된 목적지만 탑승 가능
-```
-
 **결론:** 격리 깊이는 nono Linux > srt Windows. 그러나 **Windows 환경에서는 srt가 유일한 선택지**다 — nono는 Windows를 지원하지 않는다.
 
 #### srt의 현재 에이전트 보안 한계
