@@ -500,6 +500,59 @@ NemoClaw는 `clientId=openclaw-control-ui` 또는 `clientMode=webchat|cli`이고
 
 ---
 
+## 10. 감사 로그 범위
+
+NemoClaw의 로그는 단일 위치에 있지 않다. 레이어별로 발생한 보안 이벤트가 각각 다른 저장소에 기록되며, 모두 **append-only** 구조로 에이전트가 변조·삭제할 수 없다.
+
+### 10.1 기록되는 것
+
+| 이벤트 유형 | 기록 내용 | 저장 위치 | 무결성 |
+|------------|----------|----------|--------|
+| **Shields 상태 변경** | shields up/down/auto-restore/failed 이벤트, config 변경(inference-set, config-set), 봉인 시점 SHA256 | `~/.nemoclaw/state/shields-audit.jsonl` | append-only + `chattr +i` |
+| **설정 파일 무결성** | 보호 파일의 SHA256 상태 (권한·소유자·hash) | shields audit에 포함 | 위와 동일 |
+| **메모리 경로 Write/Edit 시도** | 도구명, 대상 경로, 차단 여부 | before_tool_call 훅 → plugin 로그 | OpenClaw 플러그인 로그 |
+| **네트워크 요청** | 도메인, HTTP method/path (L7 REST 엔드포인트) | OpenShell 게이트웨이 로그 | OpenShell 관리 |
+| **바이너리 스코프 위반** | 차단된 프로세스의 `/proc/<pid>/exe` 경로, 대상 도메인 | OpenShell 게이트웨이 로그 | OpenShell 관리 |
+| **크리덴셜 스트리핑** | 탐지된 필드명, 치환 여부 (값 제외) | 마이그레이션 로그 | — |
+| **게이트웨이 인증 거부** | 거부된 pair 시도, clientId, 스코프 | OpenShell 게이트웨이 로그 | OpenShell 관리 |
+
+### 10.2 기록되지 않는 것
+
+| 항목 | 이유 |
+|------|------|
+| **크리덴셜 실제 값** | 모든 로그 경로에서 redact()/redactFull() 통과 후 기록 — 키 이름만 남음 |
+| **파일 내용** | 경로와 이벤트 유형만 기록 |
+| **HTTP 요청/응답 바디** | L7 검사는 method/path만 — 페이로드 내용은 기록 안 함 |
+| **syscall 전체 스트림** | before_tool_call은 도구 호출 레벨 인터셉트. nono처럼 커널 syscall을 전수 기록하지는 않음 |
+| **에이전트 stdout/stderr** | 도구 호출만 인터셉트, 에이전트 일반 출력은 로그 대상 아님 |
+
+### 10.3 로그 무결성 보장 구조
+
+```
+shields-audit.jsonl
+  ├─ append-only (O_APPEND 플래그)
+  └─ chattr +i (immutable bit) → root도 삭제·수정 불가, 에이전트는 당연히 불가
+
+OpenShell 게이트웨이 로그
+  └─ 컨테이너 외부 (호스트 또는 원격 컬렉터) → 에이전트 접근 범위 밖
+```
+
+에이전트가 **자신의 활동 기록을 지울 수 없다**는 것이 핵심이다. `CAP_AUDIT_WRITE`를 제거(5.1)했으므로 커널 감사 로그도 조작 불가.
+
+### 10.4 nono·srt와의 비교
+
+| 항목 | NemoClaw | nono | srt |
+|------|:--------:|:----:|:---:|
+| **도구 호출 레벨 로그** | ✓ before_tool_call | 불명 (감사 원장 범위 미확인) | ✗ |
+| **네트워크 요청 로그** | ✓ L7 method/path | △ 프록시 경유 증명만 | ✓ L7 MITM |
+| **syscall 스트림 로그** | ✗ | ✓ seccomp-notify | △ 위반만 |
+| **로그 무결성** | ✓ chattr+i | ✓ Merkle tree | ✗ |
+| **크리덴셜 값 로그 제외** | ✓ redact() 강제 | ✓ | △ 콜백 구현에 의존 |
+
+> nono의 감사 원장이 도구 호출 수준인지 syscall 수준인지는 소스 확인 필요. syscall 수준이라면 nono가 더 넓은 커버리지를 갖는다.
+
+---
+
 ## 참고 자료
 
 - NemoClaw 소스: `/docs/security/best-practices.mdx`, `/docs/deployment/sandbox-hardening.mdx`
