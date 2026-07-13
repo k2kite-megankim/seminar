@@ -384,16 +384,6 @@ const ENV_SECRET_FIELD_PATTERN = /^(?:[A-Z0-9]+_)*(?:TOKEN|KEY|SECRET|PASSWORD|.
 const CREDENTIAL_HEADER_NAMES = new Set(["authorization", "proxy-authorization", "cookie"]);
 ```
 
-단, OpenShell resolve placeholder는 크리덴셜 참조(값 아님)이므로 보존한다:
-
-```
-openshell:resolve:env:NVIDIA_API_KEY  → 보존
-xoxb-OPENSHELL-RESOLVE-ENV-SLACK_BOT_TOKEN → 보존
-실제 토큰 값 → [STRIPPED_BY_MIGRATION]
-```
-
-배열 요소도 처리하며 `["--api-key", "<secret>"]` 형태의 CLI 인자 패턴도 탐지한다.
-
 ### 6.4 메모리 시크릿 스캐너 (secret-scanner.ts)
 
 OpenClaw 플러그인이 `before_tool_call` 훅으로 Write/Edit 도구 호출을 가로채 메모리 경로에 시크릿이 기록되는 것을 방지한다.
